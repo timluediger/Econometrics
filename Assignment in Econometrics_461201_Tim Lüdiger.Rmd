@@ -1,0 +1,466 @@
+---
+title: "Assignment in Econometrics (PhD) 27.05.2023 - 05.03.2023"
+author: "Tim Lüdiger"
+date: "01/03/2023"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following R Markdown file contains the solutions to exercises 1. Maximum likelihood estimation and 2. GMM from the corresponding exam booklet.
+
+## 1. Maximum likelihood estimation
+
+#### (a)
+
+Given are the conditions stated in 1.a in the exam booklet. Since $\lim_{\epsilon \to 0} f(\gamma - \epsilon) = f(\gamma)$ it holds that $B(\gamma - \epsilon)^{-\beta-1} = B(\gamma)^{-\beta-1}$. If the density of the double power law is now evaluated at the cutoff point $\gamma$ both power laws have the same density and it holds that
+
+
+$$
+\begin{aligned}
+&B(\gamma - \epsilon)^{-\beta-1} = A\gamma^{-\alpha-1}\\
+\iff &B\gamma^{-\beta-1} = A\gamma^{-\alpha-1}\\
+\iff& B = A\frac{\gamma^{-\alpha-1}}{\gamma^{-\beta-1}}\\
+\iff& B = A\gamma^{-\alpha -1 +\beta + 1}\\
+\iff& B = A\gamma^{\beta -\alpha}
+\end{aligned}.
+$$
+
+Using the fact that the density function $f(z)$ integrates to one on the interval $[z_0, \infty)$ and that $B$ can be described as a function of $A$ ($B = A\gamma^{\beta -\alpha}$) the density function can be rearranged such that
+
+$$
+\begin{aligned}
+& \int_{z_0}^\infty f(z) = \int_{z_0}^{\gamma - \epsilon} Bz^{-\beta-1} + \int_\gamma^\infty A z^{-\alpha -1}\\
+\iff & 1 = B[-\beta^{-1}\gamma^{-1}]_{z_0}^\gamma + A[-\alpha^{-1}-z^{-\alpha}]_\gamma^\infty \\
+\iff & 1 = B((-\beta^{-1}\gamma^{-\beta})- (-\beta^{-1}z_0^{-\beta})) + A(0+\alpha^{-1}\gamma^{-\alpha})\\
+\iff & \frac{1}{A} = \frac{B(-\beta^{-1}\gamma^{-\beta})}{A} - \frac{B(-\beta^{-1}z_0^{-\beta})}{A} + \frac{\gamma^{-\alpha}}{\alpha}\\
+\iff & \frac{1}{A} = \frac{A\gamma^{\beta-\alpha}(-\beta^{-1}\gamma^{-\beta})}{A} - \frac{A\gamma^{\beta-\alpha}(-\beta^{-1}z_0^{-\beta})}{A} + \frac{\gamma^{-\alpha}}{\alpha}\\
+\iff & \frac{1}{A} = \frac{\gamma^{\beta-\alpha}}{\beta}(-\gamma^{-\beta}) + \frac{\gamma^{\beta-\alpha}}{\beta}(-z_0^{-\beta})+\frac{\gamma^{-\alpha}}{\alpha}\\
+\iff & \frac{1}{A} = \frac{\gamma^{\beta-\alpha}}{\beta}(z_0^{-\beta}-\gamma^{-\beta})+\frac{\gamma^{-\alpha}}{\alpha}
+\end{aligned}
+$$
+
+#### (b)
+
+The cutoff $\gamma$ determines the number of observations below the cutoff, $K$, among the total number of observations $N$.
+The Likelihood function can be written as
+
+$$
+\begin{aligned}
+L(\alpha, \beta,\gamma|z_1,...z_n)& = \prod_{i=1}^N f_z(z_i|\alpha, \beta,\gamma)\\
+& =\prod_{i=1}^K Bz_i^{-\beta-1}  \prod_{j=K+1}^{N} Az_j^{-\alpha-1} \\
+& = \prod_{i=1}^K A\gamma^{\beta-\alpha}z_i^{-\beta-1}  \prod_{j=K+1}^{N} Az_j^{-\alpha-1}\\
+\end{aligned}
+$$
+
+
+Taking natural logarithms yields the log-likelihood function denoted by
+$$
+\begin{aligned}
+\ln (L(\alpha, \beta,\gamma|z_1,...z_n))& = \sum_{i=1}^K\ln( A\gamma^{\beta-\alpha}z_i^{-\beta-1} ) + \sum_{j=K+1}^{N}\ln( Az_j^{-\alpha-1})\\
+& = \sum_{i=1}^K(\ln (A) + (\beta -\alpha) \ln (\gamma) + (-\beta-1) \ln(z_i)) + \sum_{j=K+1}^N (\ln (A) + (-\alpha-1)\ln (z_j))\\
+& = K \ln (A) + K(\beta - \alpha) \ln (\gamma) - (\beta +1) \sum_{i=1}^K \ln (z_i) + (N-K)\ln(A) - (\alpha+1) \sum_{j=K+1}^N \ln(z_j)\\
+&= N \ln(A) + K(\beta - \alpha) \ln(\gamma)\\
+&- (\beta+1)[\ln(z_1)+...+\ln(z_K)]\\
+&-(\alpha+1)[\ln(z_{K+1})+...+\ln(z_N)],
+\end{aligned}
+$$
+
+where $A$ satisfies $\frac{1}{A} = \frac{\gamma^{\beta-\alpha}}{\beta}(z_0^{-\beta}-\gamma^{-\beta})+\frac{\gamma^{-\alpha}}{\alpha}$. 
+
+
+#### (c)
+The next step is to read the data set and transform the $b$ values from Barro and Jin (2011) accordingly.
+```{r}
+# Read the dataset gdpdisaster
+gdpdisaster <- read.csv2("gdpdisaster.csv")
+
+# Transform the dataset according to Barro and Jin (2011)
+z <- 1/(1-gdpdisaster)
+
+# Hyperparameters
+z_0 <- 1.105
+gamma <- 1.4
+
+```
+The "GDP" dataset from Barro and Jin (2011) only includes observations above the threshold $z_0=1.105$ or $b=0.095$, hence, the total number of observations $N$ is simply the number of variables in the dataset. 
+
+```{r}
+
+# Number of total observations N
+N <- length(gdpdisaster$GDPdisaster)
+# Number of observations among N that lie below the cutoff gamma
+K <- N - length(z[z>=gamma])
+# Define A given the conditions in the assignment and the article
+A <- function(gamma, alpha, beta, z_0){
+  return(((gamma^(beta-alpha)/beta) * (z_0^(-beta) - gamma^(-beta)) + 
+            (gamma^(-alpha)/(alpha)))^(-1))
+}
+
+# Setup function to calculate the log-likelihood
+loglike_gdp <- function(param, gamma, z_0, z){
+  alpha <- param[1]
+  beta <- param[2]
+  
+  return(N * log(A(gamma, alpha, beta, z_0)) + K*(beta -alpha) * log(gamma)
+         -(beta+1) * sum(log(z[(z<gamma)]))
+         -(alpha+1) * sum(log(z[z>=gamma])))
+}
+
+# Maximize the log-likelihood
+results_gdp <- optim(par = c(3,10.5), fn = loglike_gdp,gamma = gamma,
+                     z_0 = z_0, z = z,
+                     control = list(fnscale = -1 ))
+
+# Estimates
+alpha_hat <- results_gdp$par[1]
+beta_hat <- results_gdp$par[2]
+
+print(c(alpha_hat, beta_hat))
+
+# Maximized value of the log-likelihood function
+max_loglike <- results_gdp$value
+print(max_loglike)
+
+```
+
+
+#### (d)
+In the following estimates for $\hat{\alpha}$ and $\hat{\beta}$ are computed for given values of $\gamma$ ranging from 1.3 to 1.6. Eventually the $\gamma$ value that maximizes the maximum likelihood function is chosen. 
+
+
+```{r}
+# Setup a grid containing the values for gamma
+gamma_grid <- seq(1.3,1.6, by = 0.001)
+
+# Empty vector to store maxima of the llh function
+max_llh_values <- rep(NA, length(gamma_grid))
+
+# Loop that computes maximum value for each value of gamma in the grid
+for(i in 1:length(gamma_grid)){
+  gamma <- gamma_grid[i]
+  K <- N - length(z[z>=gamma])
+  max_llh_values[i] <- optim(par = c(3,10), fn = loglike_gdp,gamma = gamma, 
+                          z_0 = z_0, z = z,
+                         control = list(fnscale = -1 ))$value
+}
+
+
+plot(x = gamma_grid, y = max_llh_values, type = "l")
+
+# Find maximum likelihood estimate gamma_hat
+gamma_hat <- gamma_grid[which.max(max_llh_values)]
+print(gamma_hat)
+```
+
+
+## 2. GMM
+
+#### (a)
+##### m1:
+$Z_t$ is standard normally distributed, hence, $|Z_t|$ is half-normally distributed. Also $\sigma_t$ and $Z_t$ are independent from each other. Since the stochastic volatility parameter $\sigma_t$ is always positive it holds that $|\sigma_t| = \sigma_t$.
+$$
+\begin{aligned}
+m1 = E[|y_t|] & = E[|\sigma_tZ_t|]\\
+& \stackrel{\text{ind.}}{=} E[|\sigma_t|]E[|Z_t|]\\
+& = E[\sigma_t](\frac{2}{\pi})^{\frac{1}{2}}
+\end{aligned}
+$$
+
+##### m2:
+
+$$
+\begin{aligned}
+m2 = E[y_t^2] &= E[\sigma_t^2Z_t^2] \\
+&\stackrel{\text{ind.}}{=} E[\sigma_t^2]E[Z_t^2]
+\end{aligned}
+$$
+Given that $Z$ is standard normally distributed with zero mean and $Var[Z] = 1$ it holds that
+
+
+$$
+\begin{aligned}
+Var[Z_t]= E[Z_t^2]-E[Z_t]^2\\
+\iff E[Z_t^2] = Var[Z_t]+E[Z_t]^2\\
+\iff E[Z_t^2] = 1 +0^2\\
+\iff E[Z_t^2] = 1
+\end{aligned}
+$$
+Hence,
+$$
+\begin{aligned}
+m2 = E[y_t^2] = E[\sigma_t^2]
+\end{aligned}
+$$
+
+##### m3:
+
+
+$$
+\begin{aligned}
+m3 = E[|y_t|^3] & = E[|\sigma_tZ_t|^3]\\
+& \stackrel{\text{ind.}}{=} E[\sigma_t^3]E[|Z_t|^3]\\
+& = E[\sigma_t^3]\frac{2\sqrt{2}}{\sqrt{\pi}}
+\end{aligned}
+$$
+
+
+##### m4:
+The kurtosis (4th moment) of a standard normally distributed variable is 3. Therefore, $E[Z_t^4] = 3$
+$$
+\begin{aligned}
+m4 = E[y_t^4] &= E[\sigma_t^4Z_t^4] \\
+& \stackrel{\text{ind.}}{=} E[\sigma_t^4]E[Z_t^4]\\
+& = 3E[\sigma_t^4]
+\end{aligned}
+$$
+
+##### m4+i
+
+$$
+\begin{aligned}
+m4+i = E[|y_ty_{t-i}|] & = E[|\sigma_tZ_t\sigma_{t-1}Z_{t-i}|]\\
+& \stackrel{\text{i.i.d.}}{=} E[\sigma_t]E[|Z_t|]E[\sigma_{t-i}]E[|Z_{t-i}|]\\
+& = E[\sigma_t\sigma_{t-i}](\frac{2}{\pi})^{\frac{1}{2}}(\frac{2}{\pi})^{\frac{1}{2}}\\
+& = E[\sigma_t\sigma_{t-i}]\frac{2}{\pi} \;\;\;\; (i = 1,...,10)
+\end{aligned}
+$$
+
+##### m14+i
+
+$$
+\begin{aligned}
+m14+i = E[y_t^2y_{t-i}^2] & = E[\sigma_t^2Z_t^2\sigma_{t-1}^2Z_{t-i}^2]\\
+& \stackrel{\text{i.i.d.}}{=} E[\sigma_t^2\sigma_{t-i}^2]E[Z_t^2]E[Z_{t-i}^2]\\
+& = E[\sigma_t^2\sigma_{t-i}^2] \;\;\;\; (i = 1,...,10)
+\end{aligned}
+$$
+With the same reasoning as for the second moment m2 $E[Z_t^2]$ and $E[Z_{t-i}^2]$ are equal to one.
+
+
+
+It is given that $\ln (\sigma_t^k) \sim N(\frac{k}{2}\frac{\omega}{1-\beta},\frac{k^2}{4}\frac{\sigma_u^2}{1-\beta^2} )$.
+It follows that $\exp(\ln (\sigma_t^k))$ is log-normally distributed.
+
+$$
+E[\exp(\ln (\sigma_t^k))] = E[\sigma_t^k] = \exp(\frac{k}{2}\frac{\omega}{1-\beta}+\frac{\frac{k^2}{4}\frac{\sigma_u^2}{1-\beta^2}}{2} )
+$$
+
+For simplification I define
+
+$$
+\mu = \frac{\omega}{1-\beta}
+$$
+and 
+$$
+\sigma^2 = \frac{\sigma_u^2}{1-\beta^2}.
+$$
+
+This will be used for both the analytical derivations and the code. Simply plugging in the values for k yields
+
+$$
+\begin{aligned}
+&E[\sigma_t] = \exp(\frac{\mu}{2}+\frac{\sigma^2}{8})\\
+&E[\sigma_t^2] = \exp(\mu+\frac{\sigma^2}{4})\\
+&E[\sigma_t^3] = \exp(3\frac{\mu}{2}+9\frac{\sigma^2}{8})\\
+&E[\sigma_t^4] = \exp(4\frac{\mu}{2}+16\frac{\sigma^2}{8})\\
+&E[\sigma_t\sigma_{t-i}] =E[\sigma_t]E[\sigma_t] \exp(\beta^i\frac{\sigma^2}{4})\\
+&E[\sigma_t^2\sigma_{t-i}^2] =E[\sigma_t^2]E[\sigma_t^2] \exp(\beta^i\sigma^2)\\
+\end{aligned}
+$$
+
+For completeness´ sake I write down the moment conditions again with the just derived expectations.
+
+$$
+\begin{aligned}
+&m1 = \exp(\frac{\mu}{2}+\frac{\sigma^2}{8})(\frac{2}{\pi})^{\frac{1}{2}}\\
+&m2 =\exp(\mu+\frac{\sigma^2}{4}) \\
+&m3 =\exp(3\frac{\mu}{2}+9\frac{\sigma^2}{8})\frac{2\sqrt{2}}{\sqrt{\pi}}\\
+&m4 = 3\exp(4\frac{\mu}{2}+16\frac{\sigma^2}{8})\\
+&m4+i = (\frac{2}{\pi})\exp(\frac{\mu}{2}+\frac{\sigma^2}{8})^2 \exp(\beta^i\frac{\sigma^2}{4})\\
+&m14+i = (\exp(\mu+\frac{\sigma^2}{4}))^2\exp(\beta^i\sigma^2)
+\end{aligned}
+$$
+
+
+#### (b)
+
+SVmodel denotes a function that simulates observations $y_t$ and $\sigma_t$ for the stochastic volatility model (SVmodel). The length of the simulation (number of observations produced) can be adjusted by TT. The first 100 generated observations are discarded.
+```{r warning=FALSE}
+# Load packages
+library(ggplot2)
+library(fBasics)
+library(gmm)
+```
+
+```{r}
+# Function to create stochastic volatility process
+# theta = (omega, beta, sigma_u) parameter vector
+# TT = simulation length
+
+SVmodel <- function(omega, beta, sigma_u, TT){
+  # Create empty lists to store generated values for excess return (y) and 
+  # the stochastic volatility term (sigma) in 
+  y <- rep(NA, TT+100)
+  sigma_sq <- rep(NA, TT+100)
+  
+  # Initialize sigma_sq
+  sigma_sq[1] <- exp(omega/(1 - beta))
+  
+  # Generate observations for sigma_sq
+  for(tt in 2:(TT+100)){
+    sigma_sq[tt] <- exp(omega + beta * log(sigma_sq[tt-1])
+                        + sigma_u * rnorm(1,0,1))
+  }
+  
+  # Generate observations for y
+  for(tt in 1:(TT+100)){
+    y[tt] <- sqrt(sigma_sq[tt])* rnorm(1,0,1)
+  }
+  
+  #Discard the first 100 simulated values as burn-in phase
+  y <- y[101:(TT+100)]
+  sigma <- sqrt(sigma_sq[101:(TT+100)])
+  
+  return(data.frame(y, sigma))
+}
+
+```
+
+#### (c)
+The aforementioned SVmodel function is now evaluated at given parameters $\theta$ and for 1000 observations.
+```{r}
+# set.seed
+set.seed(123)
+
+# Simulate values with given parameters
+SV_simulation <- SVmodel(-0.736,0.9,0.363,1000)
+
+
+# Plot time series
+plot(SV_simulation$y, type = "l", xlab = "TT", ylab = "y/sigma")
+lines(SV_simulation$sigma, col = "red")
+legend("bottomright", legend=c("y", "sigma"),
+       col=c("black", "red"), lty=1:2, cex=0.8)
+
+
+```
+
+#### (d)
+Eventually, GMM estimates for $\omega, \beta$ and $\sigma_u$ are computed 500 times and stored in corresponding matrices.
+```{r warning=FALSE}
+# Number of repetitions
+R <- 500
+
+# Initialize output matrices
+theta_hat5 <- matrix(NA, nrow = R, ncol = 3)
+theta_hat9 <- matrix(NA, nrow = R, ncol = 3)
+theta_hat14 <- matrix(NA, nrow = R, ncol = 3)
+
+# Set.seed
+set.seed(123)
+
+# Perform a Monte-Carlo study with 500 repetitions
+for(r in 1:R){
+  
+  # Generate the observations
+  y <- SVmodel(-0.736,0.9,0.363,1000)$y
+  data <- cbind(y[-(1:10)], tslag(y, 1:10, TRUE)*y[-(1:10)])
+  
+  # Create function for GMM estimation
+  g_5 <- function(param, data){
+    omega <- param[1]
+    beta <- param[2]
+    sigma_u <- param[3]
+    
+    # State the moment conditions
+    mu <- omega/(1-beta)
+    sigma_sq <- sigma_u^2/(1-beta^2)
+    MC1 <- abs(data[,1]) - (2/pi)^0.5 * exp(mu/2 + sigma_sq/8)
+    MC2 <- data[,1]^2 - exp(mu + sigma_sq/4)
+    MC4 <- data[,1]^4 - 3*(exp(4*mu/2 + 16 * sigma_sq/8))
+    MC6 <- data[,3] - 2/pi * (exp(mu/2 + sigma_sq/8)^2 
+                              * exp(beta^2 * sigma_sq/4))
+    MC15 <- data[,2]^2 - ((exp(2*mu/2 + sigma_sq/4))^2 
+                          * exp(beta * sigma_sq))
+    
+    return(cbind(MC1, MC2, MC4, MC6, MC15))
+  }
+  # Adding the estimated coefficients to the corresponding matrix
+  theta_hat5[r,] <- gmm(g = g_5, x = data, t0 = c(-0.736,0.9,0.363), 
+                        wmatrix = "optimal")$coefficients
+  
+  # Again, set up a function to compute GMM estimates, 
+  # this time with 9 moment conditions
+  g_9 <- function(param, data){
+    omega <- param[1]
+    beta <- param[2]
+    sigma_u <- param[3]
+    
+    mu <- omega/(1-beta)
+    sigma_sq <- sigma_u^2/(1-beta^2)
+    MC1 <- abs(data[,1]) - (2/pi)^0.5 * exp(mu/2 + sigma_sq/8)
+    MC2 <- data[,1]^2 - exp(mu + sigma_sq/4)
+    MC3 <- abs(data[,1])^3 - 2*(2/pi)^0.5 * exp(3*mu/2 + 9*sigma_sq/8)
+    MC4 <- data[,1]^4 - 3*(exp(4*mu/2 + 16 * sigma_sq/8))
+    MC5 <- data[,2] -2/pi* (exp(mu/2 + sigma_sq/8)^2 * exp(beta * sigma_sq/4))
+    MC7 <- data[,4] -2/pi* (exp(mu/2 + sigma_sq/8)^2 * exp(beta^3 * sigma_sq/4))
+    MC9 <- data[,6] -2/pi* (exp(mu/2 + sigma_sq/8)^2 * exp(beta^5 * sigma_sq/4))
+    MC16 <- data[,3]^2-((exp(2*mu/2 + sigma_sq/8))^2 * exp(beta^2 * sigma_sq))
+    MC18 <- data[,5]^2- ((exp(2*mu/2 + sigma_sq/4))^2 * exp(beta^4 * sigma_sq))
+    
+    return(cbind(MC1, MC2, MC3, MC4, MC5, MC7, MC9, MC16, MC18))
+  }
+  theta_hat9[r,] <- gmm(g = g_9, x = data, t0 = c(-0.736,0.9,0.363),
+                        wmatrix = "optimal")$coefficients
+  
+  # Function to compute GMM with 14 moment conditions
+  g_14 <- function(param, data){
+    omega <- param[1]
+    beta <- param[2]
+    sigma_u <- param[3]
+    
+    mu <- omega/(1-beta)
+    sigma_sq <- sigma_u^2/(1-beta^2)
+    MC1 <- abs(data[,1]) - (2/pi)^0.5 * exp(mu/2 + sigma_sq/8)
+    MC2 <- data[,1]^2 - exp(mu + sigma_sq/4)
+    MC3 <- abs(data[,1])^3 - 2*(2/pi)^0.5 * exp(3*mu/2 + 9*sigma_sq/8)
+    MC4 <- data[,1]^4 - 3*(exp(4*mu/2 + 16 * sigma_sq/8))
+    MC6 <- data[,3]-2/pi * (exp(mu/2 + sigma_sq/8)^2 * exp(beta^2 * sigma_sq/4))
+    MC8 <- data[,5]-2/pi * (exp(mu/2 + sigma_sq/8)^2 * exp(beta^4 * sigma_sq/4))
+    MC10 <- data[,7]-2/pi* (exp(mu/2 + sigma_sq/8)^2 * exp(beta^6 * sigma_sq/4))
+    MC12 <- data[,9]-2/pi* (exp(mu/2 + sigma_sq/8)^2 * exp(beta^8 * sigma_sq/4))
+    MC14 <- data[,11]-2/pi*(exp(mu/2 +sigma_sq/8)^2 * exp(beta^10 * sigma_sq/4))
+    MC15 <- data[,2]^2- ((exp(2*mu/2 + sigma_sq/4))^2 * exp(beta * sigma_sq))
+    MC17 <- data[,4]^2- ((exp(2*mu/2 + sigma_sq/4))^2 * exp(beta^3 * sigma_sq))
+    MC19 <- data[,6]^2- ((exp(2*mu/2 + sigma_sq/4))^2 * exp(beta^5 * sigma_sq))
+    MC21 <- data[,8]^2- ((exp(2*mu/2 + sigma_sq/4))^2 * exp(beta^7 * sigma_sq))
+    MC23 <- data[,10]^2-((exp(2*mu/2 + sigma_sq/4))^2 * exp(beta^9 * sigma_sq))
+    
+    return(cbind(MC1, MC2, MC3, MC4, MC6, MC8, MC10, MC12, MC14, MC15, MC17,
+                 MC19, MC21, MC23))
+  }
+  theta_hat14[r,] <- gmm(g = g_14, x = data, t0 = c(-0.736,0.9,0.363),
+                         wmatrix = "optimal")$coefficients
+}
+
+
+```
+
+#### (e)
+The means of the just generated GMM estimates is:
+```{r}
+# Computing the mean estimate for each parameter
+theta_mean_5 <- apply(theta_hat5, MARGIN = 2, mean)
+theta_mean_9 <- apply(theta_hat9, MARGIN = 2, mean)
+theta_mean_14 <- apply(theta_hat14, MARGIN = 2, mean)
+print(theta_mean_5)
+print(theta_mean_9)
+print(theta_mean_14)
+```
+
